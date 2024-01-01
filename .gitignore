@@ -6,6 +6,10 @@ __pycache__/
 # C extensions
 *.so
 
+
+# Ignoring Cassava Dataset 
+cassava-leaf-disease-classification/
+
 # Distribution / packaging
 .Python
 build/

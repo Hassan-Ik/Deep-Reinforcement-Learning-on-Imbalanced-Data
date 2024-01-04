@@ -1,76 +1,75 @@
 import tensorflow as tf
 import numpy as np
-import pandas as pd
-from sklearn.utils import shuffle
-from sklearn.model_selection import train_test_split
 
-class CustomImageDataset:
-    def __init__(self, X, y, image_size = (512, 512), batch_size=8):
+class Cifar10ImageDataset:
+    def __init__(self, batch_size=32):
 
-        self.X = X
-        self.y = y
-        self.image_size = image_size
         self.batch_size = batch_size
         self.create_dataset()
-
+        self.get_labels_counts()
         self.get_rho()
         self.get_minority_classes()
 
-    def imbalance_the_data(self):
-        pass
-
-    def load_image_and_label_from_path(self, image_path, label):
-        # img = tf.io.read_file(image_path)
-        # img = tf.image.decode_jpeg(img, channels=1)
-        # Resize images to a fixed size (e.g., 224x224)
-        img = tf.reshape(image_path, self.image_size)
-        img = tf.cast(img, tf.float32) / 255.
-        return img, label
-
     def create_dataset(self):
-        # X_train, X_test, y_train, y_test = train_test_split(self.X, self.y, random_state=42, test_size=0.2)
+        (X_train, y_train), (X_test, y_test) = tf.keras.datasets.cifar10.load_data()
         
-        # training_data = tf.data.Dataset.from_tensor_slices((X_train.values, y_train))
-        # testing_data = tf.data.Dataset.from_tensor_slices((X_test.values, y_test))
-
-        # AUTOTUNE = tf.data.experimental.AUTOTUNE
-
-        # self.training_data = training_data.map(self.load_image_and_label_from_path, num_parallel_calls=AUTOTUNE)
-        # self.testing_data = testing_data.map(self.load_image_and_label_from_path, num_parallel_calls=AUTOTUNE)
-        X_train, X_test, y_train, y_test = tf.keras.datasets.cifar10.load_data()
+        X = np.concatenate([X_train, X_test])
+        y = np.concatenate([y_train, y_test])
         
-        # self.training_data_batches = training_data.shuffle(buffer_size=1000).batch(self.batch_size).prefetch(buffer_size=AUTOTUNE)
-        # self.testing_data_batches = testing_data.shuffle(buffer_size=1000).batch(self.batch_size).prefetch(buffer_size=AUTOTUNE)
+        # Convert labels to integers
+        y = y.flatten()
+
+        # Create a TensorFlow Dataset from the CIFAR-10 data
+        dataset = tf.data.Dataset.from_tensor_slices((X, y))
         
-
-    def get_class_num(self):
-        # get number of all classes
-        _, nums_cls = np.unique(self.y, return_counts=True)
-        print("No of total samples in dataset and their distribution: ", np.unique(self.y, return_counts=True))
-        
-        return nums_cls
-
-    def get_minority_classes(self):
-        label, label_count = np.unique(self.y, return_counts=True)
-        labels_with_counts = {}
-        for i in range(len(label)):
-            labels_with_counts[label[i]] = label_count[i]
-        labels_with_counts = sorted(labels_with_counts.items())
-
         # We are going to get 25% minority classes from total classes i-e if there are total 6 classes then we will only set 2 classes as minority classes
-        no_of_minority_classes_to_get = int(np.round(len(label) * 0.25))
+        self.no_of_minority_classes_to_get = int(np.round(len(np.unique(y)) * 0.25))
+        
+        
+        # Specify the percentage of label 2 data to remove
+        percentage_to_remove = 0.9
+        for min_ in range(self.no_of_minority_classes_to_get):
+            # Use the filter_data function to create a new dataset with filtered data
+            dataset = dataset.filter(lambda x, y: tf.py_function(self.filter_data, inp=[x, y, min_, percentage_to_remove], Tout=tf.bool))
+            percentage_to_remove -= 0.1
+        
+        self.dataset = dataset
+        
+        self.length_of_dataset = len(list(self.dataset.as_numpy_iterator()))
+    
+    # Define a function to filter out data with label 2 based on a percentage
+    def filter_data(self, image, label, label_to_drop, percentage_to_remove):
+        # Assuming label 2 corresponds to the class you want to remove
+        if label == label_to_drop.numpy() and tf.random.uniform(()) < percentage_to_remove:
+            return False
+        return True
+    
+    def get_labels_counts(self):
+        labels_dataset = self.dataset.map(lambda x, y: y)
+        
+        # Convert the labels dataset to a NumPy array
+        labels_array = list(labels_dataset.as_numpy_iterator())
 
+        # Get unique labels and their counts
+        self.unique_labels, self.label_counts = np.unique(labels_array, return_counts=True)
+        
+        return self.label_counts
+        
+    def get_minority_classes(self):
+        unique_labels_counts_dict = dict(zip(self.unique_labels, self.label_counts))
+        unique_labels_counts_dict = sorted(unique_labels_counts_dict.items())
+        
         self.minority_classes = []
-        for i in range(no_of_minority_classes_to_get):
-            self.minority_classes.append(labels_with_counts[i][0])
+        for i in range(self.no_of_minority_classes_to_get):
+            self.minority_classes.append(unique_labels_counts_dict[i][0])
 
     def get_rho(self):
         """
         In the two-class dataset problem, this paper has proven that the best performance is achieved when the reciprocal of the ratio of the number of data is used as the reward function.
         In this code, the result of this paper is extended to multi-class by creating a reward function with the reciprocal of the number of data for each class.
         """
-        nums_cls = self.get_class_num()
-        raw_reward_set = 1 / nums_cls
+        labels_counts = self.get_labels_counts()
+        raw_reward_set = 1 / labels_counts
         self.reward_set = np.round(raw_reward_set / np.linalg.norm(raw_reward_set), 6)
         print("\nReward for each class.")
         for cl_idx, cl_reward in enumerate(self.reward_set):

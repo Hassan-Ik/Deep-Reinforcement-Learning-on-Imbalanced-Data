@@ -8,11 +8,20 @@ from collections import deque
 import numpy as np
 import tensorflow as tf
 from sklearn import metrics
-tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-
 
 class DQNAgent:
     def __init__(self, network, dataset, state_size, action_size, memory, epsilon):
+        """
+        Defining the Deep Q Learning Agent for our Imbalanced Data Classification Reinforcement Learning.
+
+        Args:
+            network (q_network): Our custom deep q network for training and prediction
+            dataset (_type_): Imbalanced Dataset we are going to use to test our proposed network 
+            state_size (_type_): Input shape, since we are using image dataset it would be like (32, 32, 3)
+            action_size (_type_): Its is the predicted classes i-e 5 for ten labels 
+            memory (_type_): A queue where we will store our network's actions, states, rewards and terminal
+            epsilon (_type_): Based on which we will decide the rewarding and penalty values during episodes
+        """
         self.network = network
         self.dataset = dataset
         self.memory = memory
@@ -25,15 +34,44 @@ class DQNAgent:
         self.epsilon_min = 0.01
 
     def remember(self, state, action, reward, next_state, terminal):
+        """
+        Remembering the state, action, reward, possible next_state, and terminal which means if our model predicted minority class or not
+
+        Args:
+            state (_type_): Data, i-e for image data its an image
+            action (_type_): predicted class 
+            reward (_type_): reward calculated based on reciprocal of the different class distributions in dataset
+            next_state (_type_): Possible next image
+            terminal (_type_): 1 if our model predicted minority class wrong and 0 for everything else
+        """
         self.memory.append((state, action, reward, next_state, terminal))
 
     def act(self, state):
+        """
+        Getting the possilble action for a state i-e for image data it would be label
+
+        Args:
+            state (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
         if np.random.rand() <= self.epsilon:
             return np.random.choice(self.action_size)
         q_values = self.network.model.predict(state)
         return np.argmax(q_values[0])
     
     def get_reward_and_terminal(self, label, action):
+        """
+        Get the reward and terminal for the predicted action
+
+        Args:
+            label (int): Real label/class of the image
+            action (int): Predicted label/class of the image.
+
+        Returns:
+            _type_: _description_
+        """
         terminal = 0
         if action == label:
             reward = self.dataset.reward_set[label]
@@ -45,12 +83,18 @@ class DQNAgent:
         return reward, terminal
     
     def replay(self, batch_size):
+        """
+         Replay the prediction of the saved states in memory
+
+        Args:
+            batch_size (int): _description_
+        """
         if len(self.memory) < batch_size:
             return
 
         minibatch = random.sample(self.memory, batch_size)
         for state, action, reward, next_state, terminal in minibatch:
-            target = self.network.model.predict(state)
+            target = self.network.model.predict(np.reshape(state, [-1, self.state_size]))
             if terminal:
                 target[0][action] = reward
             else:
@@ -67,19 +111,32 @@ class DQNAgent:
             self.epsilon *= self.epsilon_decay
 
     def save_model(self, save_path):
+        """
+        Saving the trained DQN model
+
+        Args:
+            save_path (str): path and name of the model weights
+        """
         self.network.model.save_weights(save_path)
 
     def train(self, num_episodes):
+        """
+            
+        """
         for episode in range(num_episodes):
-            int_val = np.random.randint(0, len(self.dataset.training_data))
-            state_batch = self.dataset.training_data.take(int_val)
-            for state, label in tuple(state_batch):
+            int_val = np.random.randint(0, self.dataset.length_of_dataset)
+            state_batch = self.dataset.dataset.take(int_val)
+            for state, label in list(state_batch):
                 action = self.act(state)
-                next_state = self.dataset.training_data.take(np.random.randint(0, len(self.dataset.training_data)))
+                next_state = self.dataset.dataset.take(np.random.randint(0, self.dataset.length_of_dataset))
                 next_state = tuple(next_state)[0][0]
                 
                 print(f"Action is {action} and label is {label}")
+                
                 reward, terminal = self.get_reward_and_terminal(label, action)
+                
+                print(f"Reward is {reward}")
+                
                 self.remember(state, action, reward, next_state, terminal)
                 state = next_state
 
@@ -90,58 +147,26 @@ class DQNAgent:
 
                 if len(self.memory) > self.dataset.batch_size:
                     self.replay(self.dataset.batch_size)
-        # for episode in range(num_episodes):
-        #     int_val = np.random.randint(0, len(self.dataset.training_data_batches))
-        #     state_batch = self.dataset.training_data_batches.take(int_val)
-        #     for states, labels in tuple(state_batch):
-        #         for index, val in enumerate(labels):
-        #             state = states[index]
-        #             action = self.act(state.numpy())
-        #             next_state = states[np.random.randint(0, len(states))]
                     
-        #             print(f"Action is {action} and label is {labels[index]}")
-        #             reward, terminal = self.get_reward_and_terminal(labels[index], action)
-        #             self.remember(state, action, reward, next_state, terminal)
-        #             state = next_state
-
-        #             if terminal == 1:
-        #                 self.network.update_target_network()
-        #                 print("Episode: {}, Reward: {}".format(episode, reward))
-        #                 break
-
-        #             if len(self.memory) > self.dataset.batch_size:
-        #                 self.replay(self.dataset.batch_size)
-                
+    def evaluate(self, percent_data = 0.2):
         # Testing the model
-        # total_reward = 0
-        # for test_state in X_test:
-        #     test_state = np.reshape(test_state, [1, state_size])
-        #     action = self.act(test_state)
-        #     reward = 1 if y_test[np.argmax(test_state)] == 1 else -1
-        #     total_reward += reward
+        total_reward = 0
+        labels = []
+        predictions = []
+        no_of_data = self.dataset.length_of_dataset * percent_data
+        for image, label in self.dataset[:no_of_data]:
+            image = np.reshape(image, [-1, self.state_size])
+            action = self.act(image)
+            reward, terminal = self.get_reward_and_terminal(label, action)
+            total_reward += reward
+            labels.append(label)
+            predictions.append(action)
 
-        # print("Test Accuracy: {:.2%}".format(total_reward / len(X_test)))
-        
-    def evaluate(self, train_label, train_prediction, val_label, val_prediction, step, show_phase="Both"):
-        # Calculate f1 score of each class and weighted macro average
-        print("train_step : {}, epsilon : {:.3f}".format(step, self.epsilon))
-        if show_phase == "Both":
-            phase = ["Train Data.", "Validation Data."]
-            labels = [train_label, val_label]
-            predictions = [train_prediction, val_prediction]
-        elif show_phase == "Train":
-            phase = ["Train Data."]
-            labels = [train_label]
-            predictions = [train_prediction]
-        elif show_phase == "Validation":
-            phase = ["Validation Data."]
-            labels = [val_label]
-            predictions = [val_prediction]
+        print("Test Accuracy: {:.2%}".format(total_reward / len(self.dataset.length_of_dataset)))
 
         for idx, (label, prediction) in enumerate(zip(labels, predictions)):
             f1_all_cls = metrics.f1_score(label, prediction, average=None)
             f1_macro_avg = metrics.f1_score(label, prediction, average='weighted')
-            print("\t\t {:<20} f1-score of ".format(phase[idx]), end="")
             for i, f1 in enumerate(f1_all_cls):
                 print("class {} : {:.3f}".format(i, f1), end=", ")
-            print("weighted macro avg : {:.3f}".format(f1_macro_avg))
+            print("weighted macro avg : {:.3f}".format(f1_macro_avg))    

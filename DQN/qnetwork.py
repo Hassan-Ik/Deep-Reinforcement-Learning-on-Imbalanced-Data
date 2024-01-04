@@ -28,13 +28,8 @@ class DQNetwork:
         # Convolution Layers
         conv2 = tf.keras.layers.Conv2D(32, 5, strides=2, activation=tf.nn.relu)(input_layer)
         conv2 = tf.keras.layers.Conv2D(32, 5, strides=2, activation=tf.nn.relu)(conv2)
-        # conv2   = tf.keras.layers.Conv2D(32, 5, strides=2, activation=tf.nn.relu)(conv2)
-
-        # Adding average pooling to make its prediction better
-        pooling = tf.keras.layers.GlobalAveragePooling2D()(conv2)
-        
-        dropout = tf.keras.layers.Dropout(rate=0.3)(pooling)
-        outputs = tf.keras.layers.Dense(self.action_size, activation="softmax")(dropout)
+        flatten = tf.keras.layers.Flatten()(conv2)
+        outputs = tf.keras.layers.Dense(self.action_size, activation="softmax")(flatten)
         model = tf.keras.Model(inputs=input_layer, outputs=outputs)
         
         # Compiling Deep Q Network Model

@@ -6,6 +6,7 @@ __pycache__/
 # C extensions
 *.so
 
+test.py
 
 # Ignoring Cassava Dataset 
 cassava-leaf-disease-classification/

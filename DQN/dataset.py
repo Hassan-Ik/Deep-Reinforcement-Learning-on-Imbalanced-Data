@@ -36,6 +36,7 @@ class Cifar10ImageDataset:
         self.dataset = dataset
         
         self.length_of_dataset = len(list(self.dataset.as_numpy_iterator()))
+        # self.length_of_dataset = sum(1 for _ in self.dataset.as_numpy_iterator())
     
     # Define a function to filter out data with label 2 based on a percentage
     def filter_data(self, image, label, label_to_drop, percentage_to_remove):

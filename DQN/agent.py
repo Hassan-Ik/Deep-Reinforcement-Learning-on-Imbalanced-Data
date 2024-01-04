@@ -94,15 +94,15 @@ class DQNAgent:
 
         minibatch = random.sample(self.memory, batch_size)
         for state, action, reward, next_state, terminal in minibatch:
-            target = self.network.model.predict(np.reshape(state, [-1, self.state_size]))
+            target = self.network.model.predict(np.reshape(state, [-1, self.state_size[0], self.state_size[1], self.state_size[2]]))
             if terminal:
                 target[0][action] = reward
             else:
-                t = self.network.target_model.predict(next_state)[0]
+                t = self.network.target_model.predict(np.reshape(next_state, [-1, self.state_size[0], self.state_size[1], self.state_size[2]]))[0]
                 target[0][action] = reward + self.network.gamma * np.amax(t)
 
             print("Target is ", target)
-            self.network.model.fit(state, target, epochs=1, verbose=0)
+            self.network.model.fit(np.reshape(state, [-1, self.state_size[0], self.state_size[1], self.state_size[2]]), target, epochs=1, verbose=0)
 
         self.update_epsilon()
 
@@ -121,12 +121,12 @@ class DQNAgent:
 
     def train(self, num_episodes):
         """
-            
+
         """
         for episode in range(num_episodes):
             int_val = np.random.randint(0, self.dataset.length_of_dataset)
             state_batch = self.dataset.dataset.take(int_val)
-            for state, label in list(state_batch):
+            for state, label in tuple(state_batch):
                 action = self.act(state)
                 next_state = self.dataset.dataset.take(np.random.randint(0, self.dataset.length_of_dataset))
                 next_state = tuple(next_state)[0][0]

@@ -9,6 +9,7 @@ __pycache__/
 
 # Ignoring Cassava Dataset 
 cassava-leaf-disease-classification/
+digit-recognizer/
 
 # Distribution / packaging
 .Python

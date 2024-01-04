@@ -24,11 +24,6 @@ class DQNAgent:
         self.epsilon_decay = 0.995
         self.epsilon_min = 0.01
 
-        self.saver = tf.train.Saver()
-        tf_config = tf.ConfigProto()
-        tf_config.gpu_options.allow_growth = True
-        self.sess = tf.Session(config=tf_config)
-
     def remember(self, state, action, reward, next_state, terminal):
         self.memory.append((state, action, reward, next_state, terminal))
 
@@ -47,22 +42,22 @@ class DQNAgent:
             # End of an episode if the agent misjudgement about a minority class
             if label in self.dataset.minority_classes:
                 terminal = 1
-        return [reward], [terminal]
+        return reward, terminal
     
     def replay(self, batch_size):
         if len(self.memory) < batch_size:
             return
 
         minibatch = random.sample(self.memory, batch_size)
-
-        for state, action, reward, next_state, done in minibatch:
+        for state, action, reward, next_state, terminal in minibatch:
             target = self.network.model.predict(state)
-            if done:
+            if terminal:
                 target[0][action] = reward
             else:
                 t = self.network.target_model.predict(next_state)[0]
                 target[0][action] = reward + self.network.gamma * np.amax(t)
 
+            print("Target is ", target)
             self.network.model.fit(state, target, epochs=1, verbose=0)
 
         self.update_epsilon()
@@ -76,24 +71,46 @@ class DQNAgent:
 
     def train(self, num_episodes):
         for episode in range(num_episodes):
-            state_batch = self.dataset.training_data_batches[np.random.randint(0, len(self.dataset.training_data_batches))]
-            
-            for state, label in state_batch.take(self.dataset.batch_size):
+            int_val = np.random.randint(0, len(self.dataset.training_data))
+            state_batch = self.dataset.training_data.take(int_val)
+            for state, label in tuple(state_batch):
                 action = self.act(state)
-                next_state = state_batch[np.random.randint(0, len(state_batch))]
+                next_state = self.dataset.training_data.take(np.random.randint(0, len(self.dataset.training_data)))
+                next_state = tuple(next_state)[0][0]
                 
+                print(f"Action is {action} and label is {label}")
                 reward, terminal = self.get_reward_and_terminal(label, action)
-                
                 self.remember(state, action, reward, next_state, terminal)
                 state = next_state
 
                 if terminal == 1:
-                    self.network.update_target_model()
+                    self.network.update_target_network()
                     print("Episode: {}, Reward: {}".format(episode, reward))
                     break
 
                 if len(self.memory) > self.dataset.batch_size:
                     self.replay(self.dataset.batch_size)
+        # for episode in range(num_episodes):
+        #     int_val = np.random.randint(0, len(self.dataset.training_data_batches))
+        #     state_batch = self.dataset.training_data_batches.take(int_val)
+        #     for states, labels in tuple(state_batch):
+        #         for index, val in enumerate(labels):
+        #             state = states[index]
+        #             action = self.act(state.numpy())
+        #             next_state = states[np.random.randint(0, len(states))]
+                    
+        #             print(f"Action is {action} and label is {labels[index]}")
+        #             reward, terminal = self.get_reward_and_terminal(labels[index], action)
+        #             self.remember(state, action, reward, next_state, terminal)
+        #             state = next_state
+
+        #             if terminal == 1:
+        #                 self.network.update_target_network()
+        #                 print("Episode: {}, Reward: {}".format(episode, reward))
+        #                 break
+
+        #             if len(self.memory) > self.dataset.batch_size:
+        #                 self.replay(self.dataset.batch_size)
                 
         # Testing the model
         # total_reward = 0

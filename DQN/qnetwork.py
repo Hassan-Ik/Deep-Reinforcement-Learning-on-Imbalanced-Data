@@ -1,5 +1,6 @@
 import tensorflow as tf
-
+from collections import deque
+import random
 
 class QNetwork:
     def __init__(self, config):
@@ -9,7 +10,7 @@ class QNetwork:
         self.n_class = len(self.config.new_class)
         tf.reset_default_graph()
         with tf.variable_scope('input'):
-            self.state = tf.placeholder(shape=[None, size, size, channel], dtype=tf.float32)
+            self.state = tf.keras.layers.Input(shape=[None, size, size, channel], dtype=tf.float32)
             self.learning_rate = tf.placeholder(dtype=tf.float32)
             self.target_q = tf.placeholder(shape=[None, 1], dtype=tf.float32)
             self.reward = tf.placeholder(shape=[None, 1], dtype=tf.float32)
@@ -40,3 +41,46 @@ class QNetwork:
         v = tf.layers.dense(x, 1)
         q = v + a - tf.reduce_mean(a, axis=1, keepdims=True)
         return q
+    
+
+class DQNetwork:
+    def __init__(self, state_size, action_size, gamma: float, epsilon: float, learning_rate: float):
+        self.state_size = state_size
+        self.action_size = action_size
+        self.gamma = gamma # Discount factor
+        self.epsilon = epsilon  # Exploration-exploitation trade-off
+        self.learning_rate = learning_rate
+        
+        print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+        
+        # Main Q-network
+        self.model = self.build_network()
+
+        # Target Q-network
+        self.target_model = self.build_network()
+        
+        self.update_target_network()
+    
+    def update_target_network(self):
+        self.target_model.set_weights(self.model.get_weights())
+
+    def build_network(self):
+        # Input layer of the network
+        input_layer = tf.keras.layers.Input(shape = self.state_size, activation='relu')
+
+        # Convolution Layers
+        conv2 = tf.keras.layers.Conv2D(32, 5, strides=2, activation=tf.nn.relu)(input_layer)
+        conv2 = tf.keras.layers.Conv2D(32, 5, strides=2, activation=tf.nn.relu)(conv2)
+        conv2   = tf.keras.layers.Conv2D(32, 5, strides=2, activation=tf.nn.relu)(conv2)
+
+        # Adding average pooling to make its prediction better
+        pooling = tf.keras.layers.GlobalAveragePooling2D()(conv2)
+        
+        dropout = tf.keras.layers.Dropout(dropout_rate=0.3)(pooling)
+        outputs = tf.keras.layers.Dense(self.action_size, activation="softmax")(dropout)
+        model = tf.keras.Model(inputs=input_layer, outputs=outputs)
+        
+        # Compiling Deep Q Network Model
+        model.compile(optimizer=tf.keras.optimizers.Adam(lr=self.learning_rate), loss='categorical_crossentropy')
+        
+        return model

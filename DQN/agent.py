@@ -7,10 +7,9 @@ from collections import deque
 
 import numpy as np
 import tensorflow as tf
-from sklearn import metrics
-
+from sklearn import metrics    
 class DQNAgent:
-    def __init__(self, network, dataset, state_size, action_size, memory, epsilon):
+    def __init__(self, network, dataset, state_size, action_size, memory, gamma, epsilon):
         """
         Defining the Deep Q Learning Agent for our Imbalanced Data Classification Reinforcement Learning.
 
@@ -29,6 +28,7 @@ class DQNAgent:
         self.action_size = action_size
         self.memory = deque(maxlen=1024)
         
+        self.gamma = gamma
         self.epsilon = epsilon
         self.epsilon_decay = 0.995
         self.epsilon_min = 0.01
@@ -99,13 +99,11 @@ class DQNAgent:
                 target[0][action] = reward
             else:
                 t = self.network.target_model.predict(np.reshape(next_state, [-1, self.state_size[0], self.state_size[1], self.state_size[2]]))[0]
-                target[0][action] = reward + self.network.gamma * np.amax(t)
+                target[0][action] = reward + self.gamma * np.amax(t)
 
-            print("Target is ", target)
             self.network.model.fit(np.reshape(state, [-1, self.state_size[0], self.state_size[1], self.state_size[2]]), target, epochs=1, verbose=0)
-
         self.update_epsilon()
-
+        
     def update_epsilon(self):
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
@@ -119,26 +117,90 @@ class DQNAgent:
         """
         self.network.model.save_weights(save_path)
 
-    def train(self, num_episodes):
+    def train_cassava(self, num_episodes: int =10, steps: int = 20):
         """
 
         """
         for episode in range(num_episodes):
             int_val = np.random.randint(0, self.dataset.length_of_dataset)
-            state_batch = self.dataset.dataset.take(int_val)
-            for state, label in tuple(state_batch):
+            state_batch = self.dataset.training_data_batches.take(int_val)
+            for states, labels in list(state_batch):
+                for index in range(states.shape[0]):
+                    state = states[index].numpy()
+                    label = labels[index].numpy()
+
+                    state = np.reshape(state, [-1, self.state_size[0], self.state_size[1], self.state_size[2]])
+
+                    action = self.act(state)
+                    print("Predicted Action", action)
+                    if index < states.shape[0] - 1:
+                        next_state = states[index + 1]
+                    else:
+                        next_state = states[0]
+                        
+                    print(f"Action is {action} and label is {label}")
+
+                    reward, terminal = self.get_reward_and_terminal(label, action)
+
+                    # print(f"Reward is {reward}")
+
+                    self.remember(state, action, reward, next_state, terminal)
+                    if terminal == 1:
+                        self.network.update_target_network()
+                        print("Episode: {}, Reward: {}".format(episode, reward))
+                        break
+
+                    if len(self.memory) > self.dataset.batch_size:
+                        self.replay(self.dataset.batch_size)
+                    
+    def evaluate_cassava(self):
+        # Testing the model
+        total_reward = 0
+        real_labels = []
+        predictions = []
+        for states, labels in list(self.dataset.testing_data_batches.as_numpy_iterator()):
+            for index in range(states.shape[0]):
+                state = states[index]
+                label = labels[index]
+
+                state = np.reshape(state, [-1, self.state_size[0], self.state_size[1], self.state_size[2]])
                 action = self.act(state)
-                next_state = self.dataset.dataset.take(np.random.randint(0, self.dataset.length_of_dataset))
-                next_state = tuple(next_state)[0][0]
+                reward, terminal = self.get_reward_and_terminal(label, action)
+                total_reward += reward
+                real_labels.append(label)
+                predictions.append(action)
+
+        print("Test Accuracy: {:.2%}".format(total_reward / self.dataset.length_of_dataset))
+        f1_all_cls = metrics.f1_score(real_labels, predictions, average=None)
+        f1_macro_avg = metrics.f1_score(real_labels, predictions, average='weighted')
+        print("F1 None averaged score of our Cassava Deep Q Network model: ", f1_all_cls)
+        print("F1 Weighted averaged score of our Cassava Deep Q Network model: ", f1_macro_avg)
+
+    def train_cifar(self, num_episodes: int =10, steps: int = 20):
+        """
+
+        """
+        for episode in range(num_episodes):
+            random_index = np.random.randint(0, self.dataset.length_of_dataset)
+            state = self.dataset.X_train[random_index]
+            state = np.reshape(state, [1, self.state_size[0], self.state_size[1], self.state_size[2]])
+            label = self.dataset.y_train[random_index]
+            for i in range(steps):
+                action = self.act(state)
+                random_index = np.random.randint(0, self.dataset.length_of_dataset)
+                next_state = self.dataset.X_train[random_index]
+                next_state = np.reshape(next_state, [1, self.state_size[0], self.state_size[1], self.state_size[2]])
+                next_label = self.dataset.y_train[random_index]
                 
-                print(f"Action is {action} and label is {label}")
+                # print(f"Action is {action} and label is {label}")
                 
                 reward, terminal = self.get_reward_and_terminal(label, action)
                 
-                print(f"Reward is {reward}")
+                # print(f"Reward is {reward}")
                 
                 self.remember(state, action, reward, next_state, terminal)
                 state = next_state
+                label = next_label
 
                 if terminal == 1:
                     self.network.update_target_network()
@@ -148,14 +210,14 @@ class DQNAgent:
                 if len(self.memory) > self.dataset.batch_size:
                     self.replay(self.dataset.batch_size)
                     
-    def evaluate(self, percent_data = 0.2):
+    def evaluate_cifar10(self):
         # Testing the model
         total_reward = 0
         labels = []
         predictions = []
-        no_of_data = self.dataset.length_of_dataset * percent_data
-        for image, label in self.dataset[:no_of_data]:
-            image = np.reshape(image, [-1, self.state_size])
+        for index, image in enumerate(self.dataset.X_test):
+            label = self.dataset.y_test[index]
+            image = np.reshape(image, [-1, self.state_size[0], self.state_size[1], self.state_size[2]])
             action = self.act(image)
             reward, terminal = self.get_reward_and_terminal(label, action)
             total_reward += reward

@@ -1,11 +1,9 @@
 import tensorflow as tf
 
 class DQNetwork:
-    def __init__(self, state_size, action_size, gamma: float, epsilon: float, learning_rate: float):
+    def __init__(self, state_size, action_size, learning_rate: float):
         self.state_size = state_size
         self.action_size = action_size
-        self.gamma = gamma # Discount factor
-        self.epsilon = epsilon  # Exploration-exploitation trade-off
         self.learning_rate = learning_rate
         
         print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))

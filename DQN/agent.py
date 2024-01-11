@@ -178,9 +178,10 @@ class DQNAgent:
                 
                     if terminal == 1:
                         self.network.update_target_network()
-                        print("Total Reward: {} after {} Episodes".format(total_reward, episode))
                         break
-
+                
+                print("Total Reward: {} after {} Episodes".format(total_reward, episode))
+                        
                 if len(self.memory) > self.dataset.batch_size:
                     self.replay(self.dataset.batch_size)
                 
@@ -237,8 +238,9 @@ class DQNAgent:
                 
                 if terminal == 1:
                     self.network.update_target_network()
-                    print("Total Reward: {} after {} Episodes".format(total_reward, episode))
                     break
+            
+            print("Total Reward: {} after {} Episodes".format(total_reward, episode))
 
             if len(self.memory) > self.dataset.batch_size:
                 self.replay(self.dataset.batch_size)
@@ -337,11 +339,11 @@ class DQNAgent:
                 if terminal == 1:
                     self.network.update_target_network()
                     break
-
+            
+            print("Total Reward: {} after {} Episodes".format(total_reward, episode))
+            
             if len(self.memory) > self.dataset.batch_size:
                 self.replay(self.dataset.batch_size)
-
-            print("Total Reward: {} after {} Episodes".format(total_reward, episode))
                     
     def evaluate_personality(self):
         # Testing the model

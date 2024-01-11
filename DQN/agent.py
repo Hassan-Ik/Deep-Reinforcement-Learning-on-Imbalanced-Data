@@ -14,7 +14,7 @@ import seaborn as sns
 
 
 class DQNAgent:
-    def __init__(self, network, dataset, state_size, action_size, memory, gamma, epsilon, network_type: str = 'ddgn'):
+    def __init__(self, network, dataset, state_size, action_size, memory, gamma, epsilon, network_type: str = 'ddqn'):
         """
         Defining the Deep Q Learning Agent for our Imbalanced Data Classification Reinforcement Learning.
 
@@ -37,8 +37,10 @@ class DQNAgent:
         
         self.gamma = gamma
         self.epsilon = epsilon
+        self.initial_epsilon = epsilon
         self.epsilon_decay = 1e-3
         self.epsilon_min = 0.01
+        self.decay_steps = 1000
 
     def remember(self, state, action, reward, next_state, terminal):
         """
@@ -53,7 +55,7 @@ class DQNAgent:
         """
         self.memory.append((state, action, reward, next_state, terminal))
 
-    def act(self, state):
+    def act(self, state, is_training=True):
         """
         Getting the possilble action for a state i-e for image data it would be label
 
@@ -63,7 +65,7 @@ class DQNAgent:
         Returns:
             _type_: _description_
         """
-        if np.random.rand() < self.epsilon:
+        if np.random.rand() < self.epsilon and is_training:
             return np.random.choice(self.action_size)
         q_values = self.network.model.predict(np.reshape(state, (-1, self.state_size[0])), verbose=0)
         return np.argmax(q_values[0])
@@ -89,7 +91,7 @@ class DQNAgent:
                 terminal = 1
         return reward, terminal
     
-    def replay(self, batch_size):
+    def replay(self, batch_size, step):
         """
          Replay the prediction of the saved states in memory
 
@@ -101,43 +103,37 @@ class DQNAgent:
 
         minibatch = random.sample(self.memory, batch_size)
         for state, action, reward, next_state, terminal in minibatch:
-            target = reward
-            if not terminal:
-                if len(self.state_size) > 2:
-                    next_state = np.reshape(next_state, [-1, self.state_size[0], self.state_size[1], self.state_size[2]])
-                else:
-                    next_state = np.reshape(next_state, [-1, self.state_size[0]])
-
-                target = (reward + self.gamma *
-                          np.amax(self.network.model.predict(next_state, verbose=0)))
-            
             if len(self.state_size) > 2:
-                state = np.reshape(state, [-1, self.state_size[0], self.state_size[1], self.state_size[2]])
+                next_state = np.reshape(next_state, [-1, self.state_size[0], self.state_size[1], self.state_size[2]])
             else:
-                state = np.reshape(state, [-1, self.state_size[0]])
+                next_state = np.reshape(next_state, [-1, self.state_size[0]])
+            
+            q_mnet, q_tnet = self.network.model.predict(next_state, verbose=0), self.network.target_model.predict(next_state, verbose=0)
 
-            target_f = self.network.model.predict(state, verbose=0)
-            target_f[0][action] = target
-            self.network.model.fit(state, target_f, epochs=1, verbose=0)
+            a_wrt_qmnet = np.argmax(q_mnet, axis=1)[:, np.newaxis]
+            max_q_ = q_tnet[np.arange(len(q_tnet)), a_wrt_qmnet.flatten()]
 
-            tf.keras.backend.clear_session()
-        self.update_epsilon()
+            with tf.GradientTape() as tape:
+                if len(self.state_size) > 2:
+                    state = np.reshape(state, [-1, self.state_size[0], self.state_size[1], self.state_size[2]])
+                else:
+                    state = np.reshape(state, [-1, self.state_size[0]])
+                q_values = self.network.model(state, training=True)
+                selected_q_values = tf.reduce_sum(tf.one_hot(action, self.action_size) * q_values, axis=1)
+                target_q_values = reward + (1 - terminal) * self.gamma * max_q_
+                loss = tf.keras.losses.CategoricalCrossentropy()(target_q_values, selected_q_values)
 
-        # minibatch = random.sample(self.memory, batch_size)
-        # for state, action, reward, next_state, terminal in minibatch:
-        #     target = self.network.model.predict(np.reshape(state, [-1, self.state_size[0], self.state_size[1], self.state_size[2]]))
-        #     if terminal:
-        #         target[0][action] = reward
-        #     else:
-        #         t = self.network.target_model.predict(np.reshape(next_state, [-1, self.state_size[0], self.state_size[1], self.state_size[2]]))[0]
-        #         target[0][action] = reward + self.gamma * np.amax(t)
-
-        #     self.network.model.fit(np.reshape(state, [-1, self.state_size[0], self.state_size[1], self.state_size[2]]), target, epochs=1, verbose=0)
-        # self.update_epsilon()
+            gradients = tape.gradient(loss, self.network.model.trainable_variables)
+            tf.keras.optimizers.Adam(learning_rate=self.network.learning_rate).apply_gradients(zip(gradients, self.network.model.trainable_variables))
+            
+            # tf.keras.backend.clear_session()
+        self.update_epsilon(step)
         
-    def update_epsilon(self):
-        if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
+    def update_epsilon(self, step):
+        self.epsilon = self.epsilon_min + (self.initial_epsilon - self.epsilon_min) * np.exp(
+            -self.gamma * step / self.decay_steps
+        )
+        return self.epsilon
 
     def save_model(self, save_path):
         """
@@ -155,6 +151,7 @@ class DQNAgent:
         for episode in range(num_episodes):
             int_val = np.random.randint(0, self.dataset.length_of_dataset)
             state_batch = self.dataset.training_data_batches.take(int_val)
+            total_reward = 0
             for states, labels in list(state_batch):
                 for index in range(states.shape[0]):
                     state = states[index].numpy()
@@ -183,10 +180,10 @@ class DQNAgent:
                             self.network.update_target_network()
                         break
                 
-                print("Total Reward: {} after {} Episodes".format(total_reward, episode))
-                        
-                self.replay(self.dataset.batch_size)
-                
+            print("Total Reward: {} after {} Episodes and epsilon is {}".format(total_reward, episode, self.epsilon))
+                    
+            self.replay(self.dataset.batch_size, episode)
+            
     def evaluate_cassava(self):
         # Testing the model
         total_reward = 0
@@ -198,7 +195,7 @@ class DQNAgent:
                 label = labels[index]
 
                 state = np.reshape(state, [-1, self.state_size[0], self.state_size[1], self.state_size[2]])
-                action = self.act(state)
+                action = self.act(state, False)
                 reward, terminal = self.get_reward_and_terminal(label, action)
                 total_reward += reward
                 real_labels.append(label)
@@ -243,9 +240,9 @@ class DQNAgent:
                         self.network.update_target_network()
                     break
             
-            print("Total Reward: {} after {} Episodes".format(total_reward, episode))
+            print("Total Reward: {} after {} Episodes and epsilon is {}".format(total_reward, episode, self.epsilon))
 
-            self.replay(self.dataset.batch_size)
+            self.replay(self.dataset.batch_size, episode)
                     
     def evaluate_cifar10(self):
         # Testing the model
@@ -258,7 +255,7 @@ class DQNAgent:
         for index, image in enumerate(self.dataset.X_train):
             label = self.dataset.y_train[index]
             image = np.reshape(image, [-1, self.state_size[0], self.state_size[1], self.state_size[2]])
-            action = self.act(image)
+            action = self.act(image, False)
             # action = np.argmax(self.network.model.predict(image), axis=1)
             reward, terminal = self.get_reward_and_terminal(label, action)
             total_reward += reward
@@ -268,7 +265,7 @@ class DQNAgent:
         for index, image in enumerate(self.dataset.X_test):
             label = self.dataset.y_test[index]
             image = np.reshape(image, [-1, self.state_size[0], self.state_size[1], self.state_size[2]])
-            action = self.act(image)
+            action = self.act(image, False)
             # action = np.argmax(self.network.model.predict(image), axis=1)
             reward, terminal = self.get_reward_and_terminal(label, action)
             total_reward += reward
@@ -343,9 +340,9 @@ class DQNAgent:
                         self.network.update_target_network()
                     break
             
-            print("Total Reward: {} after {} Episodes".format(total_reward, episode))
+            print("Total Reward: {} after {} Episodes and epsilon is {}".format(total_reward, episode, self.epsilon))
 
-            self.replay(self.dataset.batch_size)
+            self.replay(self.dataset.batch_size, episode)
                     
     def evaluate_personality(self):
         # Testing the model
@@ -358,7 +355,7 @@ class DQNAgent:
         for index, state in enumerate(self.dataset.X_train):
             label = self.dataset.y_train[index]
             state = np.reshape(state, [-1, self.state_size[0]])
-            action = self.act(state)
+            action = self.act(state, False)
             # action = np.argmax(self.network.model.predict(image), axis=1)
             reward, terminal = self.get_reward_and_terminal(label, action)
             total_reward += reward
@@ -368,7 +365,7 @@ class DQNAgent:
         for index, state in enumerate(self.dataset.X_test):
             label = self.dataset.y_test[index]
             state = np.reshape(state, [-1, self.state_size[0]])
-            action = self.act(state)
+            action = self.act(state, False)
             # action = np.argmax(self.network.model.predict(image), axis=1)
             reward, terminal = self.get_reward_and_terminal(label, action)
             total_reward += reward

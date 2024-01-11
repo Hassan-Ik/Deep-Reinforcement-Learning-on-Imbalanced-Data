@@ -179,20 +179,20 @@ class PersonalityDataset:
 
     def create_dataset(self):
         df = pd.read_csv("../16P/16P.csv", encoding='cp1252')
-        print(df.isna())
-
+        
         df = df.dropna()
 
-        self.X = df.drop(["Personality"], axis = 1)
+        self.X = df.drop(["Personality", "Response Id"], axis = 1)
         self.y = df["Personality"]
 
-        
-        X_train, X_test, y_train, y_test = train_test_split(self.X, self.y, random_state=42, test_size=0.2)
-        
         self.label_encoder = LabelEncoder()
-
-        y_train = self.label_encoder.fit_transform(y_train)
-        y_test = self.label_encoder.fit_transform(y_test)
+        self.y = self.label_encoder.fit_transform(self.y)
+        
+        
+        X_train, X_test, y_train, y_test = train_test_split(self.X.values, self.y, random_state=42, test_size=0.2)
+        
+        # y_train = self.label_encoder.fit_transform(y_train)
+        # y_test = self.label_encoder.fit_transform(y_test)
 
         # We are going to get 25% minority classes from total classes i-e if there are total 6 classes then we will only set 2 classes as minority classes
         self.no_of_minority_classes_to_get = int(np.round(len(np.unique(y_train)) * 0.25))

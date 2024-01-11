@@ -1,9 +1,9 @@
-from qnetwork import DQNetwork
+from qnetwork import QNetwork
 from dataset import Cifar10ImageDataset, CassavaLeafDataset
 from agent import DQNAgent
 from collections import deque
 import argparse
-
+import os
 
 if __name__ =="__main__":
     parser = argparse.ArgumentParser()
@@ -21,14 +21,18 @@ if __name__ =="__main__":
                     type=float, default=1e-4)
     parser.add_argument("episodes", help="Maximum number of episode to train our Deep Q Network on",
                     type=int, default=100)
+    parser.add_argument("network_type", help="Which network to use DQN or DDQN", type=str, default="ddqn")
     args = parser.parse_args()
     
+    if not os.exists("./model"):
+        os.makedir("/model")
+
     if args.dataset == "cifar10":
         dataset = Cifar10ImageDataset(args.batch_size)
         
-        network = DQNetwork(state_size=(32, 32, 3), action_size=10, learning_rate = args.learning_rate)
+        network = QNetwork(state_size=(32, 32, 3), action_size=10, learning_rate = args.learning_rate, network_type=args.network_type, )
         
-        agent = DQNAgent(network, dataset, state_size=(32, 32, 3), action_size = 10, memory=deque(maxlen=2000), gamma = args.gamma,epsilon=args.epsilon)
+        agent = DQNAgent(network, dataset, state_size=(32, 32, 3), action_size = 10, memory=deque(maxlen=2000), gamma = args.gamma,epsilon=args.epsilon, network_type=args.network_type)
         agent.train(args.episodes)
         agent.save_model("./model/cifar10_model.h5")
         agent.evaluate()

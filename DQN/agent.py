@@ -35,7 +35,7 @@ class DQNAgent:
         
         self.gamma = gamma
         self.epsilon = epsilon
-        self.epsilon_decay = 0.995
+        self.epsilon_decay = 1e-3
         self.epsilon_min = 0.01
 
     def remember(self, state, action, reward, next_state, terminal):
@@ -63,7 +63,7 @@ class DQNAgent:
         """
         if np.random.rand() <= self.epsilon:
             return np.random.choice(self.action_size)
-        q_values = self.network.model.predict(state, verbose=0)
+        q_values = self.network.model.predict(np.reshape(state, (-1, self.state_size[0])), verbose=0)
         return np.argmax(q_values[0])
     
     def get_reward_and_terminal(self, label, action):
@@ -174,14 +174,16 @@ class DQNAgent:
                     # print(f"Reward is {reward}")
 
                     self.remember(state, action, reward, next_state, terminal)
+                    total_reward += reward
+                
                     if terminal == 1:
                         self.network.update_target_network()
-                        print("Episode: {}, Reward: {}".format(episode, reward))
+                        print("Total Reward: {} after {} Episodes".format(total_reward, episode))
                         break
 
-                    if len(self.memory) > self.dataset.batch_size:
-                        self.replay(self.dataset.batch_size)
-                    
+                if len(self.memory) > self.dataset.batch_size:
+                    self.replay(self.dataset.batch_size)
+                
     def evaluate_cassava(self):
         # Testing the model
         total_reward = 0
@@ -231,13 +233,15 @@ class DQNAgent:
                 state = next_state
                 label = next_label
 
+                total_reward += reward
+                
                 if terminal == 1:
                     self.network.update_target_network()
-                    print("Episode: {}, Reward: {}".format(episode, reward))
+                    print("Total Reward: {} after {} Episodes".format(total_reward, episode))
                     break
 
-                if len(self.memory) > self.dataset.batch_size:
-                    self.replay(self.dataset.batch_size)
+            if len(self.memory) > self.dataset.batch_size:
+                self.replay(self.dataset.batch_size)
                     
     def evaluate_cifar10(self):
         # Testing the model
@@ -310,34 +314,34 @@ class DQNAgent:
         """
 
         """
+
         for episode in range(num_episodes):
             random_index = np.random.randint(0, self.dataset.length_of_dataset)
             state = self.dataset.X_train[random_index]
             label = self.dataset.y_train[random_index]
+            total_reward = 0
             for i in range(steps):
-                print(state.shape)
                 action = self.act(state)
                 random_index = np.random.randint(0, self.dataset.length_of_dataset)
                 next_state = self.dataset.X_train[random_index]
                 next_label = self.dataset.y_train[random_index]
                 
-                print(f"Action is {action} and label is {label}")
-                
                 reward, terminal = self.get_reward_and_terminal(label, action)
-                
-                print(f"Reward is {reward}")
                 
                 self.remember(state, action, reward, next_state, terminal)
                 state = next_state
                 label = next_label
 
+                total_reward += reward
+
                 if terminal == 1:
                     self.network.update_target_network()
-                    print("Episode: {}, Reward: {}".format(episode, reward))
                     break
 
-                if len(self.memory) > self.dataset.batch_size:
-                    self.replay(self.dataset.batch_size)
+            if len(self.memory) > self.dataset.batch_size:
+                self.replay(self.dataset.batch_size)
+
+            print("Total Reward: {} after {} Episodes".format(total_reward, episode))
                     
     def evaluate_personality(self):
         # Testing the model

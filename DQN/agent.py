@@ -40,7 +40,8 @@ class DQNAgent:
         self.initial_epsilon = epsilon
         self.epsilon_decay = 1e-3
         self.epsilon_min = 0.01
-        self.decay_steps = 1000
+        self.decay_steps = 500
+        self.power = 4
 
     def remember(self, state, action, reward, next_state, terminal):
         """
@@ -129,11 +130,26 @@ class DQNAgent:
             # tf.keras.backend.clear_session()
         self.update_epsilon(step)
         
-    def update_epsilon(self, step):
-        self.epsilon = self.epsilon_min + (self.initial_epsilon - self.epsilon_min) * np.exp(
-            -self.gamma * step / self.decay_steps
-        )
-        return self.epsilon
+    def update_epsilon(self, step, decay_type='polynomial'):
+        """
+        Using Exponential Decay/Polynomial Decay for updating epsilon value
+
+        Args:
+            step (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        if decay_type == 'polynomial':
+            # Polynomial decay function for epsilon
+            decay_factor = max(0, 1.0 - step / self.decay_steps)  # Ensure decay factor is between 0 and 1
+            self.epsilon = self.epsilon_min + (self.initial_epsilon - self.epsilon_min) * decay_factor**self.power
+            return self.epsilon
+        else:
+            self.epsilon = self.epsilon_min + (self.initial_epsilon - self.epsilon_min) * np.exp(
+                -self.gamma * step / self.decay_steps
+            )
+            return self.epsilon
 
     def save_model(self, save_path):
         """
@@ -146,7 +162,7 @@ class DQNAgent:
 
     def train_cassava(self, num_episodes: int =10, steps: int = 20):
         """
-
+            Funciton for training on the cassava image dataset
         """
         for episode in range(num_episodes):
             int_val = np.random.randint(0, self.dataset.length_of_dataset)
@@ -209,7 +225,7 @@ class DQNAgent:
     
     def train_cifar10(self, num_episodes: int =10, steps: int = 100):
         """
-
+            Function to train for cifar10 images dataset
         """
         for episode in range(num_episodes):
             random_index = np.random.randint(0, self.dataset.length_of_dataset)
@@ -313,7 +329,7 @@ class DQNAgent:
     
     def train_personality(self, num_episodes: int =1000, steps: int = 100):
         """
-
+            Function to train on personality dataset
         """
 
         for episode in range(num_episodes):

@@ -14,7 +14,7 @@ import seaborn as sns
 
 
 class DQNAgent:
-    def __init__(self, network, dataset, state_size, action_size, memory, gamma, epsilon):
+    def __init__(self, network, dataset, state_size, action_size, memory, gamma, epsilon, network_type: str = 'ddgn'):
         """
         Defining the Deep Q Learning Agent for our Imbalanced Data Classification Reinforcement Learning.
 
@@ -27,6 +27,8 @@ class DQNAgent:
             epsilon (_type_): Based on which we will decide the rewarding and penalty values during episodes
         """
         self.network = network
+        self.network_type = network_type
+        
         self.dataset = dataset
         self.memory = memory
         self.state_size = state_size
@@ -61,7 +63,7 @@ class DQNAgent:
         Returns:
             _type_: _description_
         """
-        if np.random.rand() <= self.epsilon:
+        if np.random.rand() < self.epsilon:
             return np.random.choice(self.action_size)
         q_values = self.network.model.predict(np.reshape(state, (-1, self.state_size[0])), verbose=0)
         return np.argmax(q_values[0])
@@ -177,13 +179,13 @@ class DQNAgent:
                     total_reward += reward
                 
                     if terminal == 1:
-                        self.network.update_target_network()
+                        if self.network_type == 'ddqn':
+                            self.network.update_target_network()
                         break
                 
                 print("Total Reward: {} after {} Episodes".format(total_reward, episode))
                         
-                if len(self.memory) > self.dataset.batch_size:
-                    self.replay(self.dataset.batch_size)
+                self.replay(self.dataset.batch_size)
                 
     def evaluate_cassava(self):
         # Testing the model
@@ -237,13 +239,13 @@ class DQNAgent:
                 total_reward += reward
                 
                 if terminal == 1:
-                    self.network.update_target_network()
+                    if self.network_type == 'ddqn':
+                        self.network.update_target_network()
                     break
             
             print("Total Reward: {} after {} Episodes".format(total_reward, episode))
 
-            if len(self.memory) > self.dataset.batch_size:
-                self.replay(self.dataset.batch_size)
+            self.replay(self.dataset.batch_size)
                     
     def evaluate_cifar10(self):
         # Testing the model
@@ -337,13 +339,13 @@ class DQNAgent:
                 total_reward += reward
 
                 if terminal == 1:
-                    self.network.update_target_network()
+                    if self.network_type == 'ddqn':
+                        self.network.update_target_network()
                     break
             
             print("Total Reward: {} after {} Episodes".format(total_reward, episode))
-            
-            if len(self.memory) > self.dataset.batch_size:
-                self.replay(self.dataset.batch_size)
+
+            self.replay(self.dataset.batch_size)
                     
     def evaluate_personality(self):
         # Testing the model
